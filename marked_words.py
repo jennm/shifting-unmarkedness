@@ -13,7 +13,7 @@ from collections import defaultdict
 import math
 import sys
 
-def get_log_odds(df1, df2, df0,verbose=False,lower=True):
+def get_log_odds(df1, df2, df0,verbose=False,lower=True, prior=True, frac_words=1):
     """Monroe et al. Fightin' Words method to identify top words in df1 and df2
     against df0 as the background corpus"""
     if lower:
@@ -29,30 +29,45 @@ def get_log_odds(df1, df2, df0,verbose=False,lower=True):
     sigma = defaultdict(float)
     delta = defaultdict(float)
 
+    reg = 10
+    # reg = sum(prior.values()) * frac_words # this regularizes sigma squared so that prior[word] << counts1[word] or counts2[word]
+
+    # print(df1)
+    reg = sum(prior.values()) * frac_words
     for word in prior.keys():
-        prior[word] = int(prior[word] + 0.5)
+        prior[word] = float(prior[word] + 0.5) / reg
+        if not prior:
+            prior[word] = 0
 
     for word in counts2.keys():
         counts1[word] = int(counts1[word] + 0.5)
-        if prior[word] == 0:
-            prior[word] = 1
+        if prior and prior[word] == 0:
+            prior[word] = float(1) / reg
 
     for word in counts1.keys():
         counts2[word] = int(counts2[word] + 0.5)
-        if prior[word] == 0:
-            prior[word] = 1
+        if prior and prior[word] == 0:
+            prior[word] = float(1) / reg
 
     n1 = sum(counts1.values())
     n2 = sum(counts2.values())
     nprior = sum(prior.values())
+    # reg = nprior * frac_words
+    # print(nprior)
     
     for word in prior.keys():
-        if prior[word] > 0:
-            l1 = float(counts1[word] + prior[word]) / (( n1 + nprior ) - (counts1[word] + prior[word]))
-            l2 = float(counts2[word] + prior[word]) / (( n2 + nprior ) - (counts2[word] + prior[word]))
-            sigmasquared[word] =  1/(float(counts1[word]) + float(prior[word])) + 1/(float(counts2[word]) + float(prior[word]))
+        # if prior[word] > 0:
+        if n1 - counts1[word] > 0 and n2 - counts2[word] > 0 and counts1[word] > 0 and counts2[word] > 0:
+            l1 = float(counts1[word] + prior[word] * n1) / (( n1 + nprior *n1 ) - (counts1[word] + prior[word]*n1))
+            l2 = float(counts2[word] + prior[word]*n2) / (( n2 + nprior*n2 ) - (counts2[word] + prior[word]*n2))
+
+            sigmasquared[word] =  1/(float(counts1[word]) + float(prior[word])*n1) + 1/(float(counts2[word]) + float(prior[word]*n2))
+            # sigmasquared[word] =  1/(float(counts1[word]) + float(prior[word])/reg) + 1/(float(counts2[word]) + float(prior[word])/reg) # simplified computation from fightin' words paper
+
+            # sigmasquared[word] =  1/(float(counts1[word]) + float(prior[word])) + 1/(float(counts2[word]) + float(prior[word])) + 1/(n1 + nprior - counts1[word] - prior[word]) + 1/(n2 + nprior - counts2[word] - prior[word]) # not simplifed computation from fightin' words paper
             sigma[word] =  math.sqrt(sigmasquared[word])
             delta[word] = ( math.log(l1) - math.log(l2) ) / sigma[word]
+            # delta[word] = ( math.log(l1) - math.log(l2) ) / (sigma[word] / (n1 + n2))
 
     if verbose:
         for word in sorted(delta, key=delta.get)[:10]:
@@ -65,7 +80,7 @@ def get_log_odds(df1, df2, df0,verbose=False,lower=True):
 
 
 
-def marked_words(df, target_val, target_col, unmarked_val,verbose=False):
+def marked_words(df, target_val, target_col, unmarked_val,verbose=False, prior=True, frac_words=1):
 
     """Get words that distinguish the target group (which is defined as having 
     target_group_vals in the target_group_cols column of the dataframe) 
@@ -78,9 +93,16 @@ def marked_words(df, target_val, target_col, unmarked_val,verbose=False):
     subdf = df.copy()
     for i in range(len(target_val)):
         subdf = subdf.loc[subdf[target_col[i]]==target_val[i]]
+    
+    # unmarked_df = df.copy()
+    # for i in range(len(unmarked_val)):
+    #     unmarked_df = unmarked_df.loc[unmarked_df[target_col[i]]==unmarked_val[i]]
 
     for i in range(len(unmarked_val)):
-        delt = get_log_odds(subdf['text'], df.loc[df[target_col[i]]==unmarked_val[i]]['text'],df['text'],verbose) #first one is the positive-valued one
+    # for i in range(1):#len(unmarked_val)):
+        thr  = 1.96#*1.5
+        delt = get_log_odds(subdf['text'], df.loc[df[target_col[i]]==unmarked_val[i]]['text'],df['text'],verbose, prior=prior, frac_words=frac_words) #first one is the positive-valued one
+        # delt = get_log_odds(subdf['text'], unmarked_df['text'], df['text'],verbose)
                 
         c1 = []
         c2 = []
@@ -98,7 +120,9 @@ def marked_words(df, target_val, target_col, unmarked_val,verbose=False):
             grams[unmarked_val[i]].extend(c2)
         else:
             grams[unmarked_val[i]] = c2
+    # print(grams)
     grams_refine = dict()
+    
 
     for r in grams.keys():
         temp = []
@@ -106,6 +130,7 @@ def marked_words(df, target_val, target_col, unmarked_val,verbose=False):
         for k,v in Counter([word for word, z in grams[r]]).most_common():
             if v >= thr:
                 z_score_sum = np.sum([z for word, z in grams[r] if word == k])
+                # print(k, v, z_score_sum)
                 temp.append([k, z_score_sum])
 
         grams_refine[r] = temp
