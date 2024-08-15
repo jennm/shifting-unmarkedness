@@ -33,14 +33,11 @@ def get_log_odds(df1, df2, df0,verbose=False,lower=True, prior=True, frac_words=
     sigma = defaultdict(float)
     delta = defaultdict(float)
 
-    reg = 10
     # reg = sum(prior.values()) * frac_words # this regularizes sigma squared so that prior[word] << counts1[word] or counts2[word]
 
-    # print(df1)
 
     reg1 = sum(prior.values())
     reg2 = sum(prior.values())
-    # times_greater = 10 
 
 
     # reg = sum(prior.values()) * frac_words
@@ -87,7 +84,7 @@ def get_log_odds(df1, df2, df0,verbose=False,lower=True, prior=True, frac_words=
 
     if n1 == 0 or n2 == 0:
         return delta
-    times_greater = np.sqrt(min(len(df1), len(df2)))
+    times_greater = 10 #np.sqrt(min(len(df1), len(df2)))
     # times_greater = np.sqrt(min(n1, n2))
     # times_greater = np.sqrt(nprior)#(int(float(nprior)/n1) +1)*(int(float(nprior)/n2)+1)
     # times_greater = int(float(nprior)/n1)+int(float(nprior)/n2)
@@ -96,21 +93,32 @@ def get_log_odds(df1, df2, df0,verbose=False,lower=True, prior=True, frac_words=
     counts2_top_words_set = set(map(lambda x: x[1], counts2_min_heap))
     common_words = (prior_top_words_set & counts1_top_words_set & counts2_top_words_set) | overall_common_words
 
-
+    total_reg1 = 0
+    total_reg2 = 0
+    num_diff_common_words = 0
+    times_greater1 = n1/n2
+    times_greater2 = n2/n1
     for word in common_words:
         if abs(counts1[word]-counts2[word])>0:
-            # times_greater = abs(counts1[word]-counts2[word])
-            # times_greater = np.sqrt(min(counts1[word],counts2[word]))
-            # print(word, counts1[word], counts2[word])
-            # _reg1 = float(prior[word])/((counts1[word]+counts2[word])*(max(1,counts1[word])))
-            _reg1 = float(prior[word])/(times_greater*(max(1,counts1[word])))
-            if _reg1 < reg1 and _reg1 > 0:
-                reg1 = _reg1 #max(1, _reg1)
-            # _reg2 = float(prior[word])/((counts1[word]+counts2[word])*(max(1,counts2[word])))
-            _reg2 = float(prior[word])/(times_greater*(max(1,counts2[word])))
-            if _reg2 < reg2 and _reg2 > 0:
-                reg2 = _reg2 #max(1,_reg2)
-
+            # times_greater = np.sqrt(abs(counts1[word]-counts2[word]))
+            num_diff_common_words += 1
+            total_reg1 += float(prior[word])/(times_greater1*(max(1,counts1[word])))
+            total_reg2 += float(prior[word])/(times_greater2*(max(1,counts2[word])))
+            # _reg1 = float(prior[word])/(times_greater*(max(1,counts1[word])))
+            # if _reg1 < reg1 and _reg1 > 0:
+            #     reg1 = _reg1
+            # _reg2 = float(prior[word])/(times_greater*(max(1,counts2[word])))
+            # if _reg2 < reg2 and _reg2 > 0:
+            #     reg2 = _reg2
+    # print(common_words)
+    if num_diff_common_words > 0:
+        reg1 = total_reg1 / num_diff_common_words #len(common_words)
+        reg2 = total_reg2 / num_diff_common_words #len(common_words)
+    else:
+    # if reg1 == 0:
+        reg1 = 1
+    # if reg2 == 0:
+        reg2 = 1
 
     print(f"times_greater: {times_greater} reg1: {reg1}, reg2: {reg2}")
     
