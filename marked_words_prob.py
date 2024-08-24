@@ -33,15 +33,10 @@ def get_log_odds(df1, df2, df0,verbose=False,lower=True, prior=True, frac_words=
     sigma = defaultdict(float)
     delta = defaultdict(float)
 
-    # reg = sum(prior.values()) * frac_words # this regularizes sigma squared so that prior[word] << counts1[word] or counts2[word]
-
-
     reg1 = sum(prior.values())
     reg2 = sum(prior.values())
 
 
-    # reg = sum(prior.values()) * frac_words
-    # reg = 1
     prior_min_heap = []
     counts1_min_heap = []
     counts2_min_heap = []
@@ -49,28 +44,25 @@ def get_log_odds(df1, df2, df0,verbose=False,lower=True, prior=True, frac_words=
 
     for word in prior.keys():
         prior[word] = float(prior[word] + 0.5) #/ reg 
-        # reg = max(reg, prior[word])
         if not prior:
             prior[word] = 0
         else:
             heapq.heappush(prior_min_heap, (prior[word], word))
             if len(prior_min_heap) > num_common_words:
                 heapq.heappop(prior_min_heap)
-    # reg1 = 1
+
     for word in counts1.keys():
         counts1[word] = int(counts1[word] + 0.5)
-        # reg1 = max(reg1, counts1[word])
         if prior and prior[word] == 0:
-            prior[word] = float(1) #/ reg 
+            prior[word] = float(1)
         else:
             heapq.heappush(counts1_min_heap, (counts1[word], word))
             if len(counts1_min_heap) > num_common_words:
                 heapq.heappop(counts1_min_heap)
 
-    # reg2 = 1
+
     for word in counts2.keys():
         counts2[word] = int(counts2[word] + 0.5)
-        # reg2 = max(reg2, counts2[word])
         if prior and prior[word] == 0:
             prior[word] = float(1) #/ reg
         else:
@@ -84,10 +76,6 @@ def get_log_odds(df1, df2, df0,verbose=False,lower=True, prior=True, frac_words=
 
     if n1 == 0 or n2 == 0:
         return delta
-    times_greater = 10 #np.sqrt(min(len(df1), len(df2)))
-    # times_greater = np.sqrt(min(n1, n2))
-    # times_greater = np.sqrt(nprior)#(int(float(nprior)/n1) +1)*(int(float(nprior)/n2)+1)
-    # times_greater = int(float(nprior)/n1)+int(float(nprior)/n2)
     prior_top_words_set = set(map(lambda x: x[1], prior_min_heap))
     counts1_top_words_set = set(map(lambda x: x[1], counts1_min_heap))
     counts2_top_words_set = set(map(lambda x: x[1], counts2_min_heap))
@@ -96,66 +84,40 @@ def get_log_odds(df1, df2, df0,verbose=False,lower=True, prior=True, frac_words=
     total_reg1 = 0
     total_reg2 = 0
     num_diff_common_words = 0
-    times_greater1 = n1/n2
-    times_greater2 = n2/n1
+
+    # print(f'n1', n1, 'n2', n2)
+    scaling_factor = .00325
+    times_greater1 = scaling_factor * n1
+    times_greater2 = scaling_factor * n2
+
     for word in common_words:
         if abs(counts1[word]-counts2[word])>0:
-            # times_greater = np.sqrt(abs(counts1[word]-counts2[word]))
             num_diff_common_words += 1
             total_reg1 += float(prior[word])/(times_greater1*(max(1,counts1[word])))
             total_reg2 += float(prior[word])/(times_greater2*(max(1,counts2[word])))
-            # _reg1 = float(prior[word])/(times_greater*(max(1,counts1[word])))
-            # if _reg1 < reg1 and _reg1 > 0:
-            #     reg1 = _reg1
-            # _reg2 = float(prior[word])/(times_greater*(max(1,counts2[word])))
-            # if _reg2 < reg2 and _reg2 > 0:
-            #     reg2 = _reg2
-    # print(common_words)
+
     if num_diff_common_words > 0:
-        reg1 = total_reg1 / num_diff_common_words #len(common_words)
-        reg2 = total_reg2 / num_diff_common_words #len(common_words)
+        reg1 = total_reg1 / num_diff_common_words
+        reg2 = total_reg2 / num_diff_common_words
     else:
-    # if reg1 == 0:
         reg1 = 1
-    # if reg2 == 0:
         reg2 = 1
 
-    print(f"times_greater: {times_greater} reg1: {reg1}, reg2: {reg2}")
+    print(f"times_greater: {times_greater1}, {times_greater2} reg1: {reg1}, reg2: {reg2}")
     
     for word in prior.keys():
         if n1 - counts1[word] > 0 and n2 - counts2[word] > 0 and counts1[word] > 0 and counts2[word] > 0:
-            # if float(prior[word]) * n1 >= counts1[word] or float(prior[word]) * n2 >= counts2[word]:
-            #     print("FAILURE")
-            #     print(f"y_1: {counts1[word]}, y_2: {counts2[word]}, a_1: {prior[word]*n1}, a_2: {prior[word]*n2}")
-    
             l1 = float(counts1[word] + float(prior[word]) / reg1) / (( n1 + float(nprior) / reg1 ) - (counts1[word] + float(prior[word])/reg1))
             l2 = float(counts2[word] + float(prior[word])/reg2) / (( n2 + float(nprior)/reg2 ) - (counts2[word] + float(prior[word])/reg2))
 
-            # sigmasquared[word] =  1/(float(counts1[word]) + float(prior[word])*mult) + 1/(float(counts2[word]) + float(prior[word]*mult))
-
-            # sigmasquared[word] =  1/(float(counts1[word]) + float(prior[word])*_n1) + 1/(float(counts2[word]) + float(prior[word]*_n2)) + 1/(float(n1)+nprior*_n1-(counts1[word]+prior[word]*_n1)+n2+nprior*_n2-(counts2[word]+prior[word]*_n2))
-            sigmasquared[word] =  1/(float(counts1[word]) + float(prior[word])/reg1) + 1/(float(counts2[word]) + float(prior[word])/reg2) #+ 1/(float(n1)+nprior*-(counts1[word]+prior[word]*0)+n2+nprior*0-(counts2[word]+prior[word]*0))
-
-
-            # l1 = (float(counts1[word]) + float(prior[word]) / reg * n1) / (( n1 + nprior / reg * n1) - (float(counts1[word]) + float(prior[word]) / reg * n1))
-            # l1 = (float(counts1[word]) + nprior * float(counts1[word]) / n1) / (( n1 + nprior) - (float(counts1[word]) + nprior * float(counts1[word]) / n1))
-            # l1 = (float(counts1[word]) + float(counts1[word]) / nprior * ) / (( n1 / n1 + nprior / nprior) - (float(counts1[word]) / n1 + float(prior[word]) / nprior))
-            # l2 = (float(counts2[word]) + float(prior[word]) / reg * n2) / (( n2 + nprior / reg * n2) - (float(counts2[word]) + float(prior[word]) / reg * n2))
-
-            # sigmasquared[word] =  1/(float(counts1[word]) + float(prior[word]) / reg * n1) + 1/(float(counts2[word]) + float(prior[word]) / reg * n2)
-            # sigmasquared[word] =  1/(float(counts1[word]) + float(prior[word])/reg) + 1/(float(counts2[word]) + float(prior[word])/reg) # simplified computation from fightin' words paper
-
-            # sigmasquared[word] =  1/(float(counts1[word]) + float(prior[word])) + 1/(float(counts2[word]) + float(prior[word])) + 1/(n1 + nprior - counts1[word] - prior[word]) + 1/(n2 + nprior - counts2[word] - prior[word]) # not simplifed computation from fightin' words paper
+            sigmasquared[word] =  1/(float(counts1[word]) + float(prior[word])/reg1) + 1/(float(counts2[word]) + float(prior[word])/reg2)
 
             ll1 = math.log(l1)
             ll2 = math.log(l2)
             diff_logs = ll1 - ll2
             sigma[word] =  math.sqrt(sigmasquared[word])
             delta[word] = diff_logs / sigma[word]
-            # delta[word] = ( math.log(l1) - math.log(l2) ) / sigma[word]
-            # print(f"word: {word}, l1: {math.log(l1)}, l2: {math.log(l2)}, sigma: {sigma[word]}")
-            # delta[word] = ( math.log(l1) - math.log(l2) ) / (sigma[word] / (n1 + n2))
-
+            
     if verbose:
         for word in sorted(delta, key=delta.get)[:10]:
             print("%s, %.3f" % (word, delta[word]))
@@ -199,27 +161,17 @@ def marked_words(df, target_val, target_col, unmarked_val,verbose=False, prior=T
             p2 = 'he'
         prompt = prompt % (r, g)
         subdf = subdf.loc[subdf['prompt'] == prompt]
-        # print(prompt)
-        # print(subdf)
-    
-    # unmarked_df = df.copy()
-    # for i in range(len(unmarked_val)):
-    #     unmarked_df = unmarked_df.loc[unmarked_df[target_col[i]]==unmarked_val[i]]
-
+        
     for i in range(len(unmarked_val)):
-    # for i in range(1):#len(unmarked_val)):
-        thr  = 1.96#*1.5
+        thr  = 1.96
         delt = get_log_odds(subdf['text'], df.loc[df[target_col[i]]==unmarked_val[i]]['text'],df['text'],verbose, prior=prior, frac_words=frac_words) #first one is the positive-valued one
-        # delt = get_log_odds(subdf['text'], unmarked_df['text'], df['text'],verbose)
-        # print(target_val)
-        # print(delt)
         c1 = []
         c2 = []
         for k,v in delt.items():
             if v > thr:
                 c1.append([k,v])
-            # elif v < -thr:
-            #     c2.append([k,v])
+            elif v < -thr:
+                c2.append([k,v])
 
         if 'target' in grams:
             grams['target'].extend(c1)
@@ -229,7 +181,6 @@ def marked_words(df, target_val, target_col, unmarked_val,verbose=False, prior=T
             grams[unmarked_val[i]].extend(c2)
         else:
             grams[unmarked_val[i]] = c2
-    # print(grams)
     grams_refine = dict()
     
 
@@ -237,10 +188,8 @@ def marked_words(df, target_val, target_col, unmarked_val,verbose=False, prior=T
         temp = []
         thr = len(unmarked_val) # must satisfy all intersections
         for k,v in Counter([word for word, z in grams[r]]).most_common():
-            # print(k, v, z_score_sum)
             if v >= thr:
                 z_score_sum = np.sum([z for word, z in grams[r] if word == k])
-                # print(k, v, z_score_sum)
                 temp.append([k, z_score_sum])
 
         grams_refine[r] = temp
